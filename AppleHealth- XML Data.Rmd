@@ -1,0 +1,224 @@
+---
+title: "Project 1 - XML"
+author: "Taylor Krebsbach"
+date: "10/14/2019"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: no
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(XML)
+library(knitr)
+
+path<-'C:\\Users\\tkrebsb\\Desktop\\Grad School\\ST558\\Project 1\\Project-1-Part-1'
+
+list.files(paste0(path,'/apple_health_export'))
+
+```
+
+# Apple Health Data
+
+On an iPhone, the Health app gathers health data from your iPhone, Apple Watch, and apps that you already use, so you can view all your progress in one convenient place. The app automatically counts your steps, walking, and running distances. And, if you have an Apple Watch, it automatically tracks your Activity data. Under your profile in the Health app, you have the ability to extract all your health data and it is stored in an XML file.
+
+I wore an Apple watch over a couple years and had experimented with different types of work outs such as Pure Barre and my Peloton spin bike. I also like to look at my sleep data on my phone. I realized this would be a great datasource for this project once one of the students posted about it on our discussion board.
+
+The health data export includes so much information which is mostly stored in the export.xml file. We will work with this file in this project. My file is over 655,000 KB. 
+
+
+
+# XML Data
+
+XML stands for Extensible Markup Language. XML is a way to create formats to store information and is a means to electronically share structured data. It is meant to make the data controlling easier on the world wide web.
+
+XML has tags that identify the data and they are used to store and organize the data. Its structure allows you to create your own self-labeled/described tags to suit your applications, which proves XML to be very flexible. Any type of data could be expressed as an XML document. Some corporations use XML to exchange information between systems. 
+
+XML data has elements which are defined by tags. Each element in XML has a beginning and an ending tag. XML also allowes for nesting elements within elements. The structure of the XML determines the relationship between the elements. XML is a very simple concept, which is why it is widely used.
+
+You can learn more about XML [here](https://whatis.techtarget.com/definition/XML-Extensible-Markup-Language#targetText=Extensible%20Markup%20Language%20(XML)%20is,well%20as%20via%20corporate%20networks.&targetText=Both%20XML%20and%20HTML%20contain,describe%20page%20or%20file%20contents.).
+
+To transform the XML data into a dataframe and use it in R, the data needs to be "parsed" to an appropriate format. Parsing interprets the data with whichever language we are using. In this case, we are parsing with R. 
+
+
+## XML R Packages
+
+There are two well known packages that assist in transforming the XML data into a usable format to use in R:
+
+1. XML  
+2. xml2  
+
+I chose the XML package because it can easily read in the XML data and parse it into a dataframe. I used the **xmlParse()** function to read the XML data, and the **xmlAttrsToDataFrame()** to use the names of the attributes that are common to each node row into a dataframe. It appears to be a go to package based on my research on XML data in R.
+
+
+# Creating a DataFrame from XML
+
+I need to parse the XML data into a dataframe from the export.xml file with the **xmlParse()** function in the XML package. 
+
+Exploring the variables and researching this file online, I learn that the export.xml file contains the following:  
+1.**Record** is the main place where the data is stored. Weight, height, blood pressure, steps, nutrition data, heart rate.  
+2. **ActivitySummary** is your Apple Watch daily Activity stats: Move, Exercise, Stand data
+3. **Workout** is your Apple Watch workout activity per workout logged
+4. **Location** is your location logged during your Apple Watch workouts (useful for runs/walks/hikes)
+5. **InstantaneousBeatsPerMinute** is exactly that: instantaneous heart rate when measured by AppleWatch
+6. **ExportDate** is useful to validate what data are you looking at.
+
+Source: <https://www.ryanpraski.com/apple-health-data-how-to-export-analyze-visualize-guide/>
+
+```{r load}
+
+xml <- xmlParse(paste0(path, '/apple_health_export/export.xml'))
+summary(xml)
+
+```
+
+I would like to focus on my ActivitySummary and Workout data. Using the **xmlAttrsToDataFrame()** function, I can transform the workout attribute to a dataframe. My Activity dataframe has 795 observations with 8 variables and my Workout dataframe has 354 observations and 13 variables. Their structures are shown, respectively:
+
+
+```{r explore, echo=FALSE}
+
+df_activity <-  XML:::xmlAttrsToDataFrame(xml["//ActivitySummary"])
+#Structure of df_Activity:
+str(df_activity)
+
+df_workout <-  XML:::xmlAttrsToDataFrame(xml["//Workout"])
+#Structure of df_Workout:
+str(df_workout)
+
+```
+
+
+I added some columns to the Activity and Workout dataframes to extract the year and month of each observation from the date:
+
+
+```{r parse, echo=TRUE}
+
+#for activity table:
+df_activity <- mutate(df_activity,date_formatted= 
+                        as.Date(df_activity$dateComponents, "%Y-%m-%d"))
+
+df_activity <- mutate(df_activity,date_year= 
+                        as.numeric(format(df_activity$date_formatted, "%Y")))
+
+df_activity <- mutate(df_activity,date_month= 
+                        as.numeric(format(df_activity$date_formatted, "%m")))
+
+
+#for workout table:
+df_workout <- mutate(df_workout,date_formatted= 
+                        substr(df_workout$startDate,1,10))
+
+df_workout <- mutate(df_workout,date_year= 
+                        as.numeric(substr(df_workout$startDate,1,4)))
+
+df_workout <- mutate(df_workout,date_month= 
+                        as.numeric(substr(df_workout$startDate,6,7)))
+```
+
+
+# Analysis
+
+First, I want to review some statistics by year that I have worn the watch: 2017-2019. The watch tracks my calories burned, my time spent exercising, and the hours stood each day. On average, it looks like I was the most active in 2018 when looking at the mean values.
+
+```{r tablessyear, echo=FALSE}
+
+gettablesyr <- function(x){
+  df_activity <- data.frame(lapply(df_activity, as.numeric), stringsAsFactors=FALSE)
+
+  if(x=='2017'){
+    activity2<-df_activity[,c(2,5,7)] %>% filter(df_activity$date_year=='2017')
+    sumtab<-sapply(activity2, FUN=summary)
+    return(kable(sumtab, digits=1, caption="Summary of Statistics for 2017"))
+  }
+  else if(x=='2018'){
+    activity2<-df_activity[,c(2,5,7)] %>% filter(df_activity$date_year=='2018')
+    sumtab<-sapply(activity2, FUN=summary)
+    return(kable(sumtab, digits=1, caption="Summary of Statistics for 2018"))
+  }
+  else if(x=='2019'){
+    activity2<-df_activity[,c(2,5,7)] %>% filter(df_activity$date_year=='2019')
+    sumtab<-sapply(activity2, FUN=summary)
+    return(kable(sumtab, digits=1, caption="Summary of Statistics for 2019"))
+  }
+}
+
+gettablesyr('2017')
+
+gettablesyr('2018')
+
+gettablesyr('2019')
+
+```
+
+Then I look at the overall frequency of my workout types for all the years combined, and separately. I took the most pure barre classes in 2018, which makes sense because I started my membership in August 2017, and ended it in June 2019 when I moved. I still have not gotten into a good workout routine at my new house yet, which is also clear from the low frequency of workouts in 2019.
+
+```{r freqs, echo=FALSE}
+
+#histogram of workout counts
+p1<-ggplot(data=df_workout, aes(x = workoutActivityType)) + geom_bar(fill='blue') + labs(x='Workout Type') +theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ggtitle("Frequency of Workout Types")
+p1
+
+#hist by workout type and year.
+p<-ggplot(data=df_workout, aes(x = df_workout$workoutActivityType)) + geom_bar(fill='pink') + 
+  labs(x='Workout Type')+facet_wrap(~df_workout$date_year)+theme(axis.text.x = element_text(angle = 90, hjust = 1)) +    
+  ggtitle("Frequency of Workout Types by Year")
+p
+
+```
+
+Now I want to check out which workouts of mine have been the most effective. For this exercise (pun intended) I will review only the  workouts I focused on (cycling, pure barre, and HIIT workouts). You can see that cycling has the most calorie burn, which makes sense because it has a lot more cardio than a pure barre class.This is seen in the density plots of the calorie distributions for each workout type. I will note that the cycling category also includes leisurely outdoor bike rides and "cooldown" peloton rides, which explains why the distribution appears to have two nodes (the higher of the two being the more strenuous peloton workouts).
+
+
+```{r distn, echo=FALSE}
+
+#make a dist of calories burned by workout types - see that cycling has the highest calorie burn.
+df_workout$totalEnergyBurned <-as.numeric(df_workout$totalEnergyBurned)
+df_workout$workoutActivityType <-as.factor(df_workout$workoutActivityType)
+
+df_workoutsub <- df_workout[df_workout$workoutActivityType=='HKWorkoutActivityTypeBarre' | 
+                              df_workout$workoutActivityType=='HKWorkoutActivityTypeHighIntensityIntervalTraining' | 
+                              df_workout$workoutActivityType=='HKWorkoutActivityTypeCycling', ]
+
+ggplot(df_workoutsub, aes(totalEnergyBurned))+
+  geom_histogram(aes(y=..density..,), bins=30)+
+  ggtitle("Histogram for Total Calories Burned")+labs(y='Density')+
+  facet_wrap(~df_workoutsub$workoutActivityType)
+```
+
+The following boxplot also shows that the distribution of cycling consists of two very different cycling rides (leisurely vs strenuous). This is apparent by the wide interquartile range. At this point I do not have the ability to seperate the two types,but that would provide a better analysis.
+
+```{r boxplots, echo=FALSE}
+
+#nowbox plot
+ggplot(df_workoutsub, aes(x = workoutActivityType, y = totalEnergyBurned))+
+  geom_boxplot() + geom_jitter(width=0.2,aes(color=workoutActivityType))+ggtitle("Boxplot for Activity Type")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+#my cycling captures cool down rides, which is why the box plot is so wide.
+```
+
+I note that calories burned are also related to the length of time for the workout. The following scatterplot explores the correlation between the duration of workout in minutes and calories burned.This is hard to see for my pure barre and HIIT classes because each classe was always the same amount of time. I believe if I removed the leisurely cycling rides from the data, there would be a clearer correlation between during and calories burned since I do differ my peloton workout lengths.
+
+```{r scatter, echo=FALSE}
+
+#scatter plot between workout time and calories burned
+df_workoutsub$duration <- as.numeric(as.character(df_workoutsub$duration))
+
+ggplot(data=df_workoutsub, aes(x=duration, y=totalEnergyBurned)) + 
+  geom_point(aes(color=workoutActivityType)) + xlab("Duration in Minutes") +ylab("Calories Burned") +
+  ggtitle("Workout Length vs Calorie Burn by Workout Type")+facet_wrap(~df_workoutsub$workoutActivityType)
+
+
+
+
+```
+
+
+
+
+# Conclusions
+
+The Apple Health Data XML contains so much information, and in this project I have only grazed the tip of the iceberg. Not only was the data easy to obtain, it was easy to transform from XML to a dataframe in R with the help of the XML R package. As my analytical R skills increase, I could see that I could find much more value in the health data. I recently stopped wearing my apple watch, but this is motivating me to put it back on to collect more data.
